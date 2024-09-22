@@ -50,6 +50,8 @@
 
 namespace devilution {
 
+bool drawUniqueItemsFlag;
+
 Item Items[MAXITEMS + 1];
 uint8_t ActiveItems[MAXITEMS];
 uint8_t ActiveItemCount;
@@ -5026,6 +5028,34 @@ void UpdateHellfireFlag(Item &item, const char *identifiedItemName)
 	if (hellfireItemNameShort == identifiedItemName || hellfireItemNameLong == identifiedItemName) {
 		// This item should be a vanilla hellfire item that has CF_HELLFIRE missing, cause only then the item name matches
 		item.dwBuff |= CF_HELLFIRE;
+	}
+}
+
+void DrawUniqueItems(const Surface &out, const Uint16 uScreenHeight)
+{
+	static std::string_view formatted {};
+	int iHeightCount = 0, iWidthCount = 0, iHeightPosStart = 68, iWidthPosStart = 80, iHeightPos = 0, iWidthPos = 0;
+
+	if (!drawUniqueItemsFlag || !gbActive) {
+		return;
+	}
+
+	for (auto item : UniqueItems)
+	{
+		formatted = { item.UIName.c_str() };
+		iHeightPos = iHeightPosStart + iHeightCount * 15;
+		iWidthPos = iWidthPosStart + iWidthCount * 200;
+
+		if (iHeightPos > uScreenHeight - 150)
+		{
+			iHeightCount = 0;
+			++iWidthCount;
+			iHeightPos = iHeightPosStart + iHeightCount * 15;
+			iWidthPos = iWidthPosStart + iWidthCount * 200;
+		}
+
+		++iHeightCount;
+		DrawString(out, formatted, Point { iWidthPos, iHeightPos }, { .flags = UiFlags::ColorGold });
 	}
 }
 

@@ -29,6 +29,8 @@ namespace devilution {
 // Item indestructible durability
 #define DUR_INDESTRUCTIBLE 255
 
+extern bool drawUniqueItemsFlag;
+
 enum item_quality : uint8_t {
 	ITEM_QUALITY_NORMAL,
 	ITEM_QUALITY_MAGIC,
@@ -575,6 +577,11 @@ bool ApplyOilToItem(Item &item, Player &player);
  * @brief Checks if the item is generated in vanilla hellfire. If yes it updates dwBuff to include CF_HELLFIRE.
  */
 void UpdateHellfireFlag(Item &item, const char *identifiedItemName);
+
+/**
+ * @brief Display the list of unique items
+ */
+void DrawUniqueItems(const Surface &out, const Uint16 uScreenHeight);
 
 /* data */
 

@@ -308,6 +308,14 @@ void OptionShowFPSChanged()
 		frameflag = false;
 }
 
+void OptionDisplayUniqueItemsChanged()
+{
+	if (*sgOptions.Gameplay.displayUniqueItems)
+		drawUniqueItemsFlag = true;
+	else
+		drawUniqueItemsFlag = false;
+}
+
 void OptionLanguageCodeChanged()
 {
 	UnloadFonts();
@@ -1072,6 +1080,7 @@ GameplayOptions::GameplayOptions()
     , autoRefillBelt("Auto Refill Belt", OptionEntryFlags::None, N_("Auto Refill Belt"), N_("Refill belt from inventory when belt item is consumed."), false)
     , disableCripplingShrines("Disable Crippling Shrines", OptionEntryFlags::None, N_("Disable Crippling Shrines"), N_("When enabled Cauldrons, Fascinating Shrines, Goat Shrines, Ornate Shrines, Sacred Shrines and Murphy's Shrines are not able to be clicked on and labeled as disabled."), false)
     , quickCast("Quick Cast", OptionEntryFlags::None, N_("Quick Cast"), N_("Spell hotkeys instantly cast the spell, rather than switching the readied spell."), false)
+    , displayUniqueItems("Display Unique Items", OptionEntryFlags::None, N_("Display Unique Items"), N_("Enabled/Disables the display of unique items in the game"), false)
     , numHealPotionPickup("Heal Potion Pickup", OptionEntryFlags::None, N_("Heal Potion Pickup"), N_("Number of Healing potions to pick up automatically."), 0, { 0, 1, 2, 4, 8, 16 })
     , numFullHealPotionPickup("Full Heal Potion Pickup", OptionEntryFlags::None, N_("Full Heal Potion Pickup"), N_("Number of Full Healing potions to pick up automatically."), 0, { 0, 1, 2, 4, 8, 16 })
     , numManaPotionPickup("Mana Potion Pickup", OptionEntryFlags::None, N_("Mana Potion Pickup"), N_("Number of Mana potions to pick up automatically."), 0, { 0, 1, 2, 4, 8, 16 })
@@ -1088,6 +1097,7 @@ GameplayOptions::GameplayOptions()
 	grabInput.SetValueChangedCallback(OptionGrabInputChanged);
 	experienceBar.SetValueChangedCallback(OptionExperienceBarChanged);
 	enemyHealthBar.SetValueChangedCallback(OptionEnemyHealthBarChanged);
+	displayUniqueItems.SetValueChangedCallback(OptionDisplayUniqueItemsChanged);
 }
 std::vector<OptionEntryBase *> GameplayOptions::GetEntries()
 {
@@ -1127,6 +1137,7 @@ std::vector<OptionEntryBase *> GameplayOptions::GetEntries()
 		&numFullRejuPotionPickup,
 		&autoPickupInTown,
 		&disableCripplingShrines,
+		&displayUniqueItems,
 		&adriaRefillsMana,
 		&grabInput,
 		&pauseOnFocusLoss,

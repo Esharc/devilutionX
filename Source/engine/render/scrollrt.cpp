@@ -1688,6 +1688,8 @@ void DrawAndBlit()
 
 	DrawFPS(out);
 
+	DrawUniqueItems(out, gnScreenHeight);
+
 	LuaEvent("GameDrawComplete");
 
 	DrawMain(hgt, drawInfoBox, drawHealth, drawMana, drawBelt, drawControlButtons);

@@ -1161,6 +1161,9 @@ void ApplicationInit()
 	if (*sgOptions.Graphics.showFPS)
 		EnableFrameCount();
 
+	if (*sgOptions.Gameplay.displayUniqueItems)
+		drawUniqueItemsFlag = true;
+
 	init_create_window();
 	was_window_init = true;
 
