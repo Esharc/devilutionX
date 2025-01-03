@@ -1164,6 +1164,8 @@ void ApplicationInit()
 	if (*sgOptions.Gameplay.displayUniqueItems)
 		drawUniqueItemsFlag = true;
 
+	rangedMoveSpeedMultiplier = *sgOptions.Gameplay.rangedMoveRateMultiplier;
+
 	init_create_window();
 	was_window_init = true;
 

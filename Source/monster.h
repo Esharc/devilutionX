@@ -29,6 +29,7 @@
 
 namespace devilution {
 
+extern int rangedMoveSpeedMultiplier;
 struct Missile;
 struct Player;
 

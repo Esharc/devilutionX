@@ -598,6 +598,8 @@ struct GameplayOptions : OptionCategoryBase {
 	OptionEntryInt<int> numRejuPotionPickup;
 	/** @brief Number of Full Rejuvenating potions to pick up automatically */
 	OptionEntryInt<int> numFullRejuPotionPickup;
+	/** @brief The move multiplier for ranged enemies */
+	OptionEntryInt<int> rangedMoveRateMultiplier;
 	/** @brief Enable floating numbers. */
 	OptionEntryEnum<FloatingNumbers> enableFloatingNumbers;
 };

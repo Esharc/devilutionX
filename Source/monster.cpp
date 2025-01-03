@@ -57,6 +57,7 @@
 
 namespace devilution {
 
+int rangedMoveSpeedMultiplier;
 CMonster LevelMonsterTypes[MaxLvlMTypes];
 size_t LevelMonsterTypeCount;
 Monster Monsters[MaxMonsters];
@@ -579,10 +580,21 @@ void DeleteMonster(size_t activeIndex)
 	std::swap(ActiveMonsters[activeIndex], ActiveMonsters[ActiveMonsterCount]); // This ensures alive monsters are before ActiveMonsterCount in the array and any deleted monster after
 }
 
+DVL_ALWAYS_INLINE bool IsRanged(Monster &monster)
+{
+	return IsAnyOf(monster.ai, MonsterAIID::SkeletonRanged, MonsterAIID::GoatRanged, MonsterAIID::Succubus, MonsterAIID::LazarusSuccubus);
+}
+
 void NewMonsterAnim(Monster &monster, MonsterGraphic graphic, Direction md, AnimationDistributionFlags flags = AnimationDistributionFlags::None, int8_t numSkippedFrames = 0, int8_t distributeFramesBeforeFrame = 0)
 {
+	int iRateMultiplier = 1;
+
+	if (IsRanged(monster) && graphic == MonsterGraphic::Walk)
+		iRateMultiplier = rangedMoveSpeedMultiplier;
+
+	auto monstType = monster.type().type;
 	const auto &animData = monster.type().getAnimData(graphic);
-	monster.animInfo.setNewAnimation(animData.spritesForDirection(md), animData.frames, animData.rate, flags, numSkippedFrames, distributeFramesBeforeFrame);
+	monster.animInfo.setNewAnimation(animData.spritesForDirection(md), animData.frames, animData.rate * iRateMultiplier, flags, numSkippedFrames, distributeFramesBeforeFrame);
 	monster.flags &= ~(MFLAG_LOCK_ANIMATION | MFLAG_ALLOW_SPECIAL);
 	monster.direction = md;
 }
@@ -592,18 +604,14 @@ void StartMonsterGotHit(Monster &monster)
 	if (monster.type().type != MT_GOLEM) {
 		auto animationFlags = gGameLogicStep < GameLogicStep::ProcessMonsters ? AnimationDistributionFlags::ProcessAnimationPending : AnimationDistributionFlags::None;
 		int8_t numSkippedFrames = (gbIsHellfire && monster.type().type == MT_DIABLO) ? 4 : 0;
-		NewMonsterAnim(monster, MonsterGraphic::GotHit, monster.direction, animationFlags, numSkippedFrames);
+ 		NewMonsterAnim(monster, MonsterGraphic::GotHit, monster.direction, animationFlags, numSkippedFrames);
 		monster.mode = MonsterMode::HitRecovery;
 	}
+
 	monster.position.tile = monster.position.old;
 	monster.position.future = monster.position.old;
 	M_ClearSquares(monster);
 	monster.occupyTile(monster.position.tile, false);
-}
-
-DVL_ALWAYS_INLINE bool IsRanged(Monster &monster)
-{
-	return IsAnyOf(monster.ai, MonsterAIID::SkeletonRanged, MonsterAIID::GoatRanged, MonsterAIID::Succubus, MonsterAIID::LazarusSuccubus);
 }
 
 void UpdateEnemy(Monster &monster)
