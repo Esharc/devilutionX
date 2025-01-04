@@ -985,7 +985,7 @@ GameplayOptions::GameplayOptions()
     , numFullManaPotionPickup("Full Mana Potion Pickup", OptionEntryFlags::None, N_("Full Mana Potion Pickup"), N_("Number of Full Mana potions to pick up automatically."), 0, { 0, 1, 2, 4, 8, 16 })
     , numRejuPotionPickup("Rejuvenation Potion Pickup", OptionEntryFlags::None, N_("Rejuvenation Potion Pickup"), N_("Number of Rejuvenation potions to pick up automatically."), 0, { 0, 1, 2, 4, 8, 16 })
     , numFullRejuPotionPickup("Full Rejuvenation Potion Pickup", OptionEntryFlags::None, N_("Full Rejuvenation Potion Pickup"), N_("Number of Full Rejuvenation potions to pick up automatically."), 0, { 0, 1, 2, 4, 8, 16 })
-    , rangedMoveRateMultiplier("Ranged Enemies Speed Factor", OptionEntryFlags::None, N_("Ranged Enemies Speed Factor"), N_("Reduce the speed that ranged enemies move at by a factor of"), 1, {1, 2, 3, 4, 5})
+    , rangedMoveRateMultiplier("Ranged Enemies Speed Factor", OptionEntryFlags::None, N_("Ranged Enemies Speed Factor"), N_("Reduce the speed that ranged enemies move at by a factor of"), 1, { 1, 2, 3, 4, 5 })
     , enableFloatingNumbers("Enable floating numbers", OptionEntryFlags::None, N_("Enable floating numbers"), N_("Enables floating numbers on gaining XP / dealing damage etc."), FloatingNumbers::Off,
           {
               { FloatingNumbers::Off, N_("Off") },

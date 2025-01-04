@@ -5052,14 +5052,12 @@ void DrawUniqueItems(const Surface &out, const Uint16 uScreenHeight)
 		return;
 	}
 
-	for (auto item : UniqueItems)
-	{
+	for (auto item : UniqueItems) {
 		formatted = { item.UIName.c_str() };
 		iHeightPos = iHeightPosStart + iHeightCount * 15;
 		iWidthPos = iWidthPosStart + iWidthCount * 200;
 
-		if (iHeightPos > uScreenHeight - 150)
-		{
+		if (iHeightPos > uScreenHeight - 150) {
 			iHeightCount = 0;
 			++iWidthCount;
 			iHeightPos = iHeightPosStart + iHeightCount * 15;
