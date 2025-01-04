@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <string>
 
+#include <expected.hpp>
 #include <fmt/format.h>
 #include <function_ref.hpp>
 
@@ -20,6 +21,7 @@
 #include "utils/enum_traits.h"
 #include "utils/format_int.hpp"
 #include "utils/language.h"
+#include "utils/status_macros.hpp"
 #include "utils/str_cat.hpp"
 #include "utils/surface_to_clx.hpp"
 
@@ -189,7 +191,7 @@ PanelEntry panelEntries[] = {
 	{ N_("Mana"), { LeftColumnLabelX, 312 }, 45, LeftColumnLabelWidth,
 	    []() { return StyledText { GetMaxManaColor(), StrCat(HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) ? 0 : InspectPlayer->_pMaxMana >> 6) }; } },
 	{ "", { 135, 312 }, 45, 0,
-	    []() { return StyledText { (InspectPlayer->_pMana != InspectPlayer->_pMaxMana ? UiFlags::ColorRed : GetMaxManaColor()), StrCat(HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) ? 0 : InspectPlayer->_pMana >> 6) }; } },
+	    []() { return StyledText { (InspectPlayer->_pMana != InspectPlayer->_pMaxMana ? UiFlags::ColorRed : GetMaxManaColor()), StrCat((HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) || (InspectPlayer->_pMana >> 6) <= 0) ? 0 : InspectPlayer->_pMana >> 6) }; } },
 
 	{ N_("Resist magic"), { RightColumnLabelX, 256 }, 57, RightColumnLabelWidth,
 	    []() { return GetResistInfo(InspectPlayer->_pMagResist); } },
@@ -270,17 +272,17 @@ void DrawStatButtons(const Surface &out)
 
 } // namespace
 
-void LoadCharPanel()
+tl::expected<void, std::string> LoadCharPanel()
 {
-	OptionalOwnedClxSpriteList background = LoadClx("data\\charbg.clx");
+	ASSIGN_OR_RETURN(OptionalOwnedClxSpriteList background, LoadClxWithStatus("data\\charbg.clx"));
 	OwnedSurface out((*background)[0].width(), (*background)[0].height());
 	RenderClxSprite(out, (*background)[0], { 0, 0 });
 	background = std::nullopt;
 
 	{
-		OwnedClxSpriteList boxLeft = LoadClx("data\\boxleftend.clx");
-		OwnedClxSpriteList boxMiddle = LoadClx("data\\boxmiddle.clx");
-		OwnedClxSpriteList boxRight = LoadClx("data\\boxrightend.clx");
+		ASSIGN_OR_RETURN(OwnedClxSpriteList boxLeft, LoadClxWithStatus("data\\boxleftend.clx"));
+		ASSIGN_OR_RETURN(OwnedClxSpriteList boxMiddle, LoadClxWithStatus("data\\boxmiddle.clx"));
+		ASSIGN_OR_RETURN(OwnedClxSpriteList boxRight, LoadClxWithStatus("data\\boxrightend.clx"));
 
 		const bool isSmallFontTall = IsSmallFontTall();
 		const int attributeHeadersY = isSmallFontTall ? 112 : 114;
@@ -298,6 +300,7 @@ void LoadCharPanel()
 	}
 
 	Panel = SurfaceToClx(out);
+	return {};
 }
 
 void FreeCharPanel()

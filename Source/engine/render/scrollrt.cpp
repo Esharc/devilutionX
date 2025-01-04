@@ -6,6 +6,7 @@
 #include "engine/render/scrollrt.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 #include <ankerl/unordered_dense.h>
@@ -83,7 +84,7 @@ constexpr auto RightFrameDisplacement = Displacement { DunFrameWidth, 0 };
 
 [[nodiscard]] DVL_ALWAYS_INLINE bool IsFloor(Point tilePosition)
 {
-	return !TileHasAny(tilePosition, TileProperties::Solid);
+	return !TileHasAny(tilePosition, TileProperties::Solid | TileProperties::BlockMissile);
 }
 
 [[nodiscard]] DVL_ALWAYS_INLINE bool IsWall(Point tilePosition)
@@ -476,9 +477,17 @@ void DrawCell(const Surface &out, Point tilePosition, Point targetBufferPosition
 	const MICROS *pMap = &DPieceMicros[levelPieceId];
 
 	const uint8_t *tbl = LightTables[lightTableIndex].data();
+	const uint8_t *foliageTbl = tbl;
 #ifdef _DEBUG
-	if (DebugPath && MyPlayer->IsPositionInPath(tilePosition))
-		tbl = GetPauseTRN();
+	int walkpathIdx = -1;
+	Point originalTargetBufferPosition;
+	if (DebugPath) {
+		walkpathIdx = MyPlayer->GetPositionPathIndex(tilePosition);
+		if (walkpathIdx != -1) {
+			originalTargetBufferPosition = targetBufferPosition;
+			tbl = GetPauseTRN();
+		}
+	}
 #endif
 
 	bool transparency = TileHasAny(tilePosition, TileProperties::Transparent) && TransList[dTransVal[tilePosition.x][tilePosition.y]];
@@ -528,7 +537,7 @@ void DrawCell(const Surface &out, Point tilePosition, Point targetBufferPosition
 		const TileType tileType = levelCelBlock.type();
 		if (!isFloor || tileType == TileType::TransparentSquare) {
 			if (isFloor && tileType == TileType::TransparentSquare) {
-				RenderTileFoliage(out, targetBufferPosition, levelCelBlock, tbl);
+				RenderTileFoliage(out, targetBufferPosition, levelCelBlock, foliageTbl);
 			} else {
 				RenderTile(out, targetBufferPosition, levelCelBlock, getFirstTileMaskLeft(tileType), tbl);
 			}
@@ -538,7 +547,7 @@ void DrawCell(const Surface &out, Point tilePosition, Point targetBufferPosition
 		const TileType tileType = levelCelBlock.type();
 		if (!isFloor || tileType == TileType::TransparentSquare) {
 			if (isFloor && tileType == TileType::TransparentSquare) {
-				RenderTileFoliage(out, targetBufferPosition + RightFrameDisplacement, levelCelBlock, tbl);
+				RenderTileFoliage(out, targetBufferPosition + RightFrameDisplacement, levelCelBlock, foliageTbl);
 			} else {
 				RenderTile(out, targetBufferPosition + RightFrameDisplacement,
 				    levelCelBlock, getFirstTileMaskRight(tileType), tbl);
@@ -553,7 +562,7 @@ void DrawCell(const Surface &out, Point tilePosition, Point targetBufferPosition
 			if (levelCelBlock.hasValue()) {
 				RenderTile(out, targetBufferPosition,
 				    levelCelBlock,
-				    transparency ? MaskType::Transparent : MaskType::Solid, tbl);
+				    transparency ? MaskType::Transparent : MaskType::Solid, foliageTbl);
 			}
 		}
 		{
@@ -561,11 +570,21 @@ void DrawCell(const Surface &out, Point tilePosition, Point targetBufferPosition
 			if (levelCelBlock.hasValue()) {
 				RenderTile(out, targetBufferPosition + RightFrameDisplacement,
 				    levelCelBlock,
-				    transparency ? MaskType::Transparent : MaskType::Solid, tbl);
+				    transparency ? MaskType::Transparent : MaskType::Solid, foliageTbl);
 			}
 		}
 		targetBufferPosition.y -= TILE_HEIGHT;
 	}
+
+#ifdef _DEBUG
+	if (DebugPath && walkpathIdx != -1) {
+		DrawString(out, StrCat(walkpathIdx),
+		    Rectangle(originalTargetBufferPosition + Displacement { 0, -TILE_HEIGHT }, Size { TILE_WIDTH, TILE_HEIGHT }),
+		    TextRenderOptions {
+		        .flags = UiFlags::AlignCenter | UiFlags::VerticalCenter
+		            | (IsTileSolid(tilePosition) ? UiFlags::ColorYellow : UiFlags::ColorWhite) });
+	}
+#endif
 }
 
 /**
@@ -580,7 +599,7 @@ void DrawFloorTile(const Surface &out, Point tilePosition, Point targetBufferPos
 
 	const uint8_t *tbl = LightTables[lightTableIndex].data();
 #ifdef _DEBUG
-	if (DebugPath && MyPlayer->IsPositionInPath(tilePosition))
+	if (DebugPath && MyPlayer->GetPositionPathIndex(tilePosition) != -1)
 		tbl = GetPauseTRN();
 #endif
 
@@ -1154,41 +1173,46 @@ void DrawView(const Surface &out, Point startPosition)
 				    { .flags = UiFlags::ColorRed | UiFlags::AlignCenter | UiFlags::VerticalCenter });
 			}
 			if (DebugGrid) {
-				auto drawDebugSquare = [&out](Point center, Displacement hor, Displacement ver, uint8_t col) {
-					auto drawLine = [&out](Point from, Point to, uint8_t col) {
-						int dx = to.x - from.x;
-						int dy = to.y - from.y;
-						int steps = std::abs(dx) > std::abs(dy) ? std::abs(dx) : std::abs(dy);
-						auto ix = static_cast<float>(dx) / static_cast<float>(steps);
-						auto iy = static_cast<float>(dy) / static_cast<float>(steps);
-						auto sx = static_cast<float>(from.x);
-						auto sy = static_cast<float>(from.y);
-
-						for (int i = 0; i <= steps; i++, sx += ix, sy += iy)
-							out.SetPixel({ static_cast<int>(sx), static_cast<int>(sy) }, col);
-					};
-					drawLine(center - hor, center + ver, col);
-					drawLine(center + hor, center + ver, col);
-					drawLine(center - hor, center - ver, col);
-					drawLine(center + hor, center - ver, col);
-				};
-
-				Displacement hor = { TILE_WIDTH / 2, 0 };
-				Displacement ver = { 0, TILE_HEIGHT / 2 };
+				int halfTileWidth = TILE_WIDTH / 2;
+				int halfTileHeight = TILE_HEIGHT / 2;
 				if (*sgOptions.Graphics.zoom) {
-					hor *= 2;
-					ver *= 2;
+					halfTileWidth *= 2;
+					halfTileHeight *= 2;
 				}
-				Point center = pixelCoords + hor - ver;
+				const Point center { pixelCoords.x + halfTileWidth, pixelCoords.y - halfTileHeight };
 
 				if (megaTiles) {
-					hor *= 2;
-					ver *= 2;
+					halfTileWidth *= 2;
+					halfTileHeight *= 2;
 				}
 
-				uint8_t col = PAL16_BEIGE;
-
-				drawDebugSquare(center, hor, ver, col);
+				const uint8_t col = PAL16_BEIGE;
+				for (const auto &[originX, dx] : { std::pair(center.x - halfTileWidth, 1), std::pair(center.x + halfTileWidth, -1) }) {
+					// We only need to draw half of the grid cell boundaries (one triangle).
+					// The other triangle will be drawn when drawing the adjacent grid cells.
+					const int dy = 1;
+					Point from { originX, center.y };
+					int height = halfTileHeight;
+					if (out.InBounds(from) && out.InBounds(from + Displacement { 2 * dx * height, dy * height })) {
+						uint8_t *dst = out.at(from.x, from.y);
+						const int pitch = out.pitch();
+						while (height-- > 0) {
+							*dst = col;
+							dst += dx;
+							*dst = col;
+							dst += dx;
+							dst += static_cast<ptrdiff_t>(dy * pitch);
+						}
+					} else {
+						while (height-- > 0) {
+							out.SetPixel(from, col);
+							from.x += dx;
+							out.SetPixel(from, col);
+							from.x += dx;
+							from.y += dy;
+						}
+					}
+				}
 			}
 		}
 	}
@@ -1386,10 +1410,10 @@ void ClearCursor() // CODE_FIX: this was supposed to be in cursor.cpp
 	PrevCursorRect = {};
 }
 
-void ShiftGrid(int *x, int *y, int horizontal, int vertical)
+void ShiftGrid(Point *offset, int horizontal, int vertical)
 {
-	*x += vertical + horizontal;
-	*y += vertical - horizontal;
+	offset->x += vertical + horizontal;
+	offset->y += vertical - horizontal;
 }
 
 int RowsCoveredByPanel()
@@ -1682,7 +1706,9 @@ void DrawAndBlit()
 	if (*sgOptions.Gameplay.showHealthValues)
 		DrawFlaskValues(out, { mainPanel.position.x + 134, mainPanel.position.y + 28 }, MyPlayer->_pHitPoints >> 6, MyPlayer->_pMaxHP >> 6);
 	if (*sgOptions.Gameplay.showManaValues)
-		DrawFlaskValues(out, { mainPanel.position.x + mainPanel.size.width - 138, mainPanel.position.y + 28 }, HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) ? 0 : MyPlayer->_pMana >> 6, HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) ? 0 : MyPlayer->_pMaxMana >> 6);
+		DrawFlaskValues(out, { mainPanel.position.x + mainPanel.size.width - 138, mainPanel.position.y + 28 },
+		    (HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) || (MyPlayer->_pMana >> 6) <= 0) ? 0 : MyPlayer->_pMana >> 6,
+		    HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) ? 0 : MyPlayer->_pMaxMana >> 6);
 
 	DrawCursor(out);
 

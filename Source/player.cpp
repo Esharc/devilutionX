@@ -546,12 +546,13 @@ bool PlrHitMonst(Player &player, Monster &monster, bool adjacentDamage = false)
 	}
 
 	if (gbIsHellfire && HasAllOf(player._pIFlags, ItemSpecialEffect::FireDamage | ItemSpecialEffect::LightningDamage)) {
+		// Fixed off by 1 error from Hellfire
 		int midam = RandomIntBetween(player._pIFMinDam, player._pIFMaxDam);
 		AddMissile(player.position.tile, player.position.temp, player._pdir, MissileID::SpectralArrow, TARGET_MONSTERS, player, midam, 0);
 	}
 	int mind = player._pIMinDam;
 	int maxd = player._pIMaxDam;
-	int dam = GenerateRnd(maxd - mind + 1) + mind;
+	int dam = RandomIntBetween(mind, maxd);
 	dam += dam * player._pIBonusDam / 100;
 	dam += player._pIBonusDamMod;
 	int dam2 = dam << 6;
@@ -678,7 +679,7 @@ bool PlrHitMonst(Player &player, Monster &monster, bool adjacentDamage = false)
 		M_StartKill(monster, player);
 	} else {
 		if (monster.mode != MonsterMode::Petrified && HasAnyOf(player._pIFlags, ItemSpecialEffect::Knockback))
-			M_GetKnockback(monster);
+			M_GetKnockback(monster, player.position.tile);
 		M_StartHit(monster, player, dam);
 	}
 	return true;
@@ -719,7 +720,7 @@ bool PlrHitPlr(Player &attacker, Player &target)
 
 	int mind = attacker._pIMinDam;
 	int maxd = attacker._pIMaxDam;
-	int dam = GenerateRnd(maxd - mind + 1) + mind;
+	int dam = RandomIntBetween(mind, maxd);
 	dam += (dam * attacker._pIBonusDam) / 100;
 	dam += attacker._pIBonusDamMod + attacker._pDamageMod;
 
@@ -866,6 +867,7 @@ bool DoRangeAttack(Player &player)
 			mistype = MissileID::LightningArrow;
 		}
 		if (HasAllOf(player._pIFlags, ItemSpecialEffect::FireArrows | ItemSpecialEffect::LightningArrows)) {
+			// Fixed off by 1 error from Hellfire
 			dmg = RandomIntBetween(player._pIFMinDam, player._pIFMaxDam);
 			mistype = MissileID::SpectralArrow;
 		}
@@ -1456,33 +1458,6 @@ void ValidatePlayer()
 	myPlayer._pInfraFlag = false;
 }
 
-void CheckCheatStats(Player &player)
-{
-	if (player._pStrength > 750) {
-		player._pStrength = 750;
-	}
-
-	if (player._pDexterity > 750) {
-		player._pDexterity = 750;
-	}
-
-	if (player._pMagic > 750) {
-		player._pMagic = 750;
-	}
-
-	if (player._pVitality > 750) {
-		player._pVitality = 750;
-	}
-
-	if (player._pHitPoints > 128000) {
-		player._pHitPoints = 128000;
-	}
-
-	if (player._pMana > 128000) {
-		player._pMana = 128000;
-	}
-}
-
 HeroClass GetPlayerSpriteClass(HeroClass cls)
 {
 	if (cls == HeroClass::Bard && !gbBard)
@@ -1550,6 +1525,16 @@ void Player::CalcScrolls()
 		}
 	}
 	EnsureValidReadiedSpell(*this);
+}
+
+bool Player::CanUseItem(const Item &item) const
+{
+	if (!IsItemValid(*this, item))
+		return false;
+
+	return _pStrength >= item._iMinStr
+	    && _pMagic >= item._iMinMag
+	    && _pDexterity >= item._iMinDex;
 }
 
 void Player::RemoveInvItem(int iv, bool calcScrolls)
@@ -1678,21 +1663,21 @@ Point Player::GetTargetPosition() const
 	return target;
 }
 
-bool Player::IsPositionInPath(Point pos)
+int Player::GetPositionPathIndex(Point pos)
 {
 	constexpr Displacement DirectionOffset[8] = { { 0, -1 }, { -1, 0 }, { 1, 0 }, { 0, 1 }, { -1, -1 }, { 1, -1 }, { 1, 1 }, { -1, 1 } };
 	Point target = position.future;
+	int i = 0;
 	for (auto step : walkpath) {
-		if (target == pos) {
-			return true;
-		}
+		if (target == pos) return i;
 		if (step == WALK_NONE)
 			break;
 		if (step > 0) {
 			target += DirectionOffset[step - 1];
 		}
+		++i;
 	}
-	return false;
+	return -1;
 }
 
 void Player::Say(HeroSpeech speechId) const
@@ -2754,7 +2739,7 @@ void StripTopGold(Player &player)
 		return;
 	if (AutoEquip(player, player.HoldItem, false))
 		return;
-	if (AutoPlaceItemInInventory(player, player.HoldItem))
+	if (CanFitItemInInventory(player, player.HoldItem))
 		return;
 	if (AutoPlaceItemInBelt(player, player.HoldItem))
 		return;
@@ -2972,8 +2957,6 @@ void ProcessPlayers()
 	for (size_t pnum = 0; pnum < Players.size(); pnum++) {
 		Player &player = Players[pnum];
 		if (player.plractive && player.isOnActiveLevel() && (&player == MyPlayer || !player._pLvlChanging)) {
-			CheckCheatStats(player);
-
 			if (!PlrDeathModeOK(player) && (player._pHitPoints >> 6) <= 0) {
 				SyncPlrKill(player, DeathReason::Unknown);
 			}
@@ -3181,8 +3164,18 @@ void CheckPlrSpell(bool isShiftHeld, SpellID spellID, SpellType spellType)
 		LastMouseButtonAction = MouseActionType::SpellPlayerTarget;
 		NetSendCmdParam5(true, CMD_SPELLPID, PlayerUnderCursor->getId(), static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellLevel, spellFrom);
 	} else {
+		Point targetedTile = cursPosition;
+		if (spellID == SpellID::Teleport && myPlayer.executedSpell.spellId == SpellID::Teleport) {
+			// Check if the player is attempting to queue Teleport onto a tile that is currently being targeted with Teleport, or a nearby tile
+			if (cursPosition.WalkingDistance(myPlayer.position.temp) <= 1) {
+				// Get the relative displacement from the player's current position to the cursor position
+				WorldTileDisplacement relativeMove = cursPosition - static_cast<Point>(myPlayer.position.tile);
+				// Target the tile the relative distance away from the player's targeted Teleport tile
+				targetedTile = myPlayer.position.temp + relativeMove;
+			}
+		}
 		LastMouseButtonAction = MouseActionType::Spell;
-		NetSendCmdLocParam4(true, CMD_SPELLXY, cursPosition, static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellLevel, spellFrom);
+		NetSendCmdLocParam4(true, CMD_SPELLXY, targetedTile, static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellLevel, spellFrom);
 	}
 }
 

@@ -90,6 +90,8 @@
 #include "utils/parse_int.hpp"
 #include "utils/paths.h"
 #include "utils/screen_reader.hpp"
+#include "utils/sdl_thread.h"
+#include "utils/status_macros.hpp"
 #include "utils/str_cat.hpp"
 #include "utils/utf8.hpp"
 
@@ -1179,9 +1181,9 @@ void ApplicationInit()
 
 void DiabloInit()
 {
-	if (forceSpawn || *sgOptions.StartUp.shareware)
+	if (forceSpawn || *sgOptions.GameMode.shareware)
 		gbIsSpawn = true;
-	if (forceDiablo || *sgOptions.StartUp.gameMode == StartUpGameMode::Diablo)
+	if (forceDiablo || *sgOptions.GameMode.gameMode == StartUpGameMode::Diablo)
 		gbIsHellfire = false;
 	if (forceHellfire)
 		gbIsHellfire = true;
@@ -1202,7 +1204,7 @@ void DiabloInit()
 	UiInitialize();
 	was_ui_init = true;
 
-	if (gbIsHellfire && !forceHellfire && *sgOptions.StartUp.gameMode == StartUpGameMode::Ask) {
+	if (gbIsHellfire && !forceHellfire && *sgOptions.GameMode.gameMode == StartUpGameMode::Ask) {
 		UiSelStartUpGameOption();
 		if (!gbIsHellfire) {
 			// Reinitialize the UI Elements because we changed the game
@@ -1274,68 +1276,77 @@ void DiabloDeinit()
 		SDL_Quit();
 }
 
-void LoadLvlGFX()
+tl::expected<void, std::string> LoadLvlGFX()
 {
 	assert(pDungeonCels == nullptr);
 	constexpr int SpecialCelWidth = 64;
 
+	const auto loadAll = [](const char *cel, const char *til, const char *special) -> tl::expected<void, std::string> {
+		ASSIGN_OR_RETURN(pDungeonCels, LoadFileInMemWithStatus(cel));
+		ASSIGN_OR_RETURN(pMegaTiles, LoadFileInMemWithStatus<MegaTile>(til));
+		ASSIGN_OR_RETURN(pSpecialCels, LoadCelWithStatus(special, SpecialCelWidth));
+		return {};
+	};
+
 	switch (leveltype) {
 	case DTYPE_TOWN:
 		if (gbIsHellfire) {
-			pDungeonCels = LoadFileInMem("nlevels\\towndata\\town.cel");
-			pMegaTiles = LoadFileInMem<MegaTile>("nlevels\\towndata\\town.til");
-		} else {
-			pDungeonCels = LoadFileInMem("levels\\towndata\\town.cel");
-			pMegaTiles = LoadFileInMem<MegaTile>("levels\\towndata\\town.til");
+			return loadAll(
+			    "nlevels\\towndata\\town.cel",
+			    "nlevels\\towndata\\town.til",
+			    "levels\\towndata\\towns");
 		}
-		pSpecialCels = LoadCel("levels\\towndata\\towns", SpecialCelWidth);
-		break;
+		return loadAll(
+		    "levels\\towndata\\town.cel",
+		    "levels\\towndata\\town.til",
+		    "levels\\towndata\\towns");
 	case DTYPE_CATHEDRAL:
-		pDungeonCels = LoadFileInMem("levels\\l1data\\l1.cel");
-		pMegaTiles = LoadFileInMem<MegaTile>("levels\\l1data\\l1.til");
-		pSpecialCels = LoadCel("levels\\l1data\\l1s", SpecialCelWidth);
-		break;
+		return loadAll(
+		    "levels\\l1data\\l1.cel",
+		    "levels\\l1data\\l1.til",
+		    "levels\\l1data\\l1s");
 	case DTYPE_CATACOMBS:
-		pDungeonCels = LoadFileInMem("levels\\l2data\\l2.cel");
-		pMegaTiles = LoadFileInMem<MegaTile>("levels\\l2data\\l2.til");
-		pSpecialCels = LoadCel("levels\\l2data\\l2s", SpecialCelWidth);
-		break;
+		return loadAll(
+		    "levels\\l2data\\l2.cel",
+		    "levels\\l2data\\l2.til",
+		    "levels\\l2data\\l2s");
 	case DTYPE_CAVES:
-		pDungeonCels = LoadFileInMem("levels\\l3data\\l3.cel");
-		pMegaTiles = LoadFileInMem<MegaTile>("levels\\l3data\\l3.til");
-		pSpecialCels = LoadCel("levels\\l1data\\l1s", SpecialCelWidth);
-		break;
+		return loadAll(
+		    "levels\\l3data\\l3.cel",
+		    "levels\\l3data\\l3.til",
+		    "levels\\l1data\\l1s");
 	case DTYPE_HELL:
-		pDungeonCels = LoadFileInMem("levels\\l4data\\l4.cel");
-		pMegaTiles = LoadFileInMem<MegaTile>("levels\\l4data\\l4.til");
-		pSpecialCels = LoadCel("levels\\l2data\\l2s", SpecialCelWidth);
-		break;
+		return loadAll(
+		    "levels\\l4data\\l4.cel",
+		    "levels\\l4data\\l4.til",
+		    "levels\\l2data\\l2s");
 	case DTYPE_NEST:
-		pDungeonCels = LoadFileInMem("nlevels\\l6data\\l6.cel");
-		pMegaTiles = LoadFileInMem<MegaTile>("nlevels\\l6data\\l6.til");
-		pSpecialCels = LoadCel("levels\\l1data\\l1s", SpecialCelWidth);
-		break;
+		return loadAll(
+		    "nlevels\\l6data\\l6.cel",
+		    "nlevels\\l6data\\l6.til",
+		    "levels\\l1data\\l1s");
 	case DTYPE_CRYPT:
-		pDungeonCels = LoadFileInMem("nlevels\\l5data\\l5.cel");
-		pMegaTiles = LoadFileInMem<MegaTile>("nlevels\\l5data\\l5.til");
-		pSpecialCels = LoadCel("nlevels\\l5data\\l5s", SpecialCelWidth);
-		break;
+		return loadAll(
+		    "nlevels\\l5data\\l5.cel",
+		    "nlevels\\l5data\\l5.til",
+		    "nlevels\\l5data\\l5s");
 	default:
-		app_fatal("LoadLvlGFX");
+		return tl::make_unexpected("LoadLvlGFX");
 	}
 }
 
-void LoadAllGFX()
+tl::expected<void, std::string> LoadAllGFX()
 {
 	IncProgress();
 #if !defined(USE_SDL1) && !defined(__vita__)
-	InitVirtualGamepadGFX(renderer);
+	InitVirtualGamepadGFX();
 #endif
 	IncProgress();
-	InitObjectGFX();
+	RETURN_IF_ERROR(InitObjectGFX());
 	IncProgress();
-	InitMissileGFX(gbIsHellfire);
+	RETURN_IF_ERROR(InitMissileGFX(gbIsHellfire));
 	IncProgress();
+	return {};
 }
 
 /**
@@ -1434,7 +1445,10 @@ void GameLogic()
 	}
 	if (leveltype != DTYPE_TOWN) {
 		gGameLogicStep = GameLogicStep::ProcessMonsters;
-		ProcessMonsters();
+#ifdef _DEBUG
+		if (!DebugInvisible)
+#endif
+			ProcessMonsters();
 		gGameLogicStep = GameLogicStep::ProcessObjects;
 		ProcessObjects();
 		gGameLogicStep = GameLogicStep::ProcessMissiles;
@@ -2848,238 +2862,121 @@ void DisableInputEventHandler(const SDL_Event &event, uint16_t modState)
 	MainWndProc(event);
 }
 
-void LoadGameLevel(bool firstflag, lvl_entry lvldir)
+void LoadGameLevelStopMusic(_music_id neededTrack)
 {
-	_music_id neededTrack = GetLevelMusic(leveltype);
-	ClearFloatingNumbers();
-
 	if (neededTrack != sgnMusicTrack)
 		music_stop();
+}
+
+void LoadGameLevelStartMusic(_music_id neededTrack)
+{
+	if (sgnMusicTrack != neededTrack)
+		music_start(neededTrack);
+
+	if (MinimizePaused) {
+		music_mute();
+	}
+}
+
+void LoadGameLevelResetCursor()
+{
 	if (pcurs > CURSOR_HAND && pcurs < CURSOR_FIRSTITEM) {
 		NewCursor(CURSOR_HAND);
 	}
-	SetRndSeed(DungeonSeeds[currlevel]);
-	IncProgress();
-	LoadTrns();
-	MakeLightTable();
-	LoadLevelSOLData();
-	IncProgress();
-	LoadLvlGFX();
-	SetDungeonMicros();
-	ClearClxDrawCache();
-	IncProgress();
+}
 
-	if (firstflag) {
-		CloseInventory();
-		qtextflag = false;
-		if (!HeadlessMode) {
-			InitInv();
-			InitQuestText();
-			InitInfoBoxGfx();
-			InitHelp();
-		}
-		InitStores();
-		InitAutomapOnce();
-	}
-	if (!setlevel) {
-		SetRndSeed(DungeonSeeds[currlevel]);
-	} else {
+void SetRndSeedForDungeonLevel()
+{
+	if (setlevel) {
 		// Maps are not randomly generated, but the monsters max hitpoints are.
 		// So we need to ensure that we have a stable seed when generating quest/set-maps.
 		// For this purpose we reuse the normal dungeon seeds.
 		SetRndSeed(DungeonSeeds[static_cast<size_t>(setlvlnum)]);
+	} else {
+		SetRndSeed(DungeonSeeds[currlevel]);
 	}
+}
 
+void LoadGameLevelFirstFlagEntry()
+{
+	CloseInventory();
+	qtextflag = false;
+	if (!HeadlessMode) {
+		InitInv();
+		ClearUniqueItemFlags();
+		InitQuestText();
+		InitInfoBoxGfx();
+		InitHelp();
+	}
+	InitStores();
+	InitAutomapOnce();
+}
+
+void LoadGameLevelStores()
+{
 	if (leveltype == DTYPE_TOWN) {
 		SetupTownStores();
 	} else {
 		FreeStoreMem();
 	}
+}
 
-	if (firstflag || lvldir == ENTRY_LOAD) {
-		bool isHellfireSaveGame = gbIsHellfireSaveGame;
-		gbIsHellfireSaveGame = gbIsHellfire;
-		LoadStash();
-		gbIsHellfireSaveGame = isHellfireSaveGame;
-	}
+void LoadGameLevelStash()
+{
+	bool isHellfireSaveGame = gbIsHellfireSaveGame;
 
-	IncProgress();
-	InitAutomap();
+	gbIsHellfireSaveGame = gbIsHellfire;
+	LoadStash();
+	gbIsHellfireSaveGame = isHellfireSaveGame;
+}
 
-	if (leveltype != DTYPE_TOWN && lvldir != ENTRY_LOAD) {
-		InitLighting();
-	}
-
-	InitLevelMonsters();
-	IncProgress();
-
-	Player &myPlayer = *MyPlayer;
-
-	if (!setlevel) {
-		CreateLevel(lvldir);
-		IncProgress();
-		SetRndSeed(DungeonSeeds[currlevel]);
-
-		if (leveltype != DTYPE_TOWN) {
-			GetLevelMTypes();
-			InitThemes();
-			if (!HeadlessMode)
-				LoadAllGFX();
-		} else if (!HeadlessMode) {
-			IncProgress();
-#if !defined(USE_SDL1) && !defined(__vita__)
-			InitVirtualGamepadGFX(renderer);
-#endif
-			IncProgress();
-			InitMissileGFX(gbIsHellfire);
-			IncProgress();
-			IncProgress();
-		}
-
-		IncProgress();
-
-		if (lvldir == ENTRY_RTNLVL) {
-			ViewPosition = GetMapReturnPosition();
-			if (Quests[Q_BETRAYER]._qactive == QUEST_DONE)
-				Quests[Q_BETRAYER]._qvar2 = 2;
-		}
-		if (lvldir == ENTRY_WARPLVL)
-			GetPortalLvlPos();
-
-		IncProgress();
-
-		for (Player &player : Players) {
-			if (player.plractive && player.isOnActiveLevel()) {
-				InitPlayerGFX(player);
-				if (lvldir != ENTRY_LOAD)
-					InitPlayer(player, firstflag);
-			}
-		}
-
-		PlayDungMsgs();
-		InitMultiView();
-		IncProgress();
-
-		bool visited = false;
-		for (const Player &player : Players) {
-			if (player.plractive)
-				visited = visited || player._pLvlVisited[currlevel];
-		}
-
-		SetRndSeed(DungeonSeeds[currlevel]);
-
-		if (leveltype != DTYPE_TOWN) {
-			if (firstflag || lvldir == ENTRY_LOAD || !myPlayer._pLvlVisited[currlevel] || gbIsMultiplayer) {
-				HoldThemeRooms();
-				[[maybe_unused]] uint32_t mid1Seed = GetLCGEngineState();
-				InitGolems();
-				InitObjects();
-				[[maybe_unused]] uint32_t mid2Seed = GetLCGEngineState();
-				IncProgress();
-				InitMonsters();
-				InitItems();
-				CreateThemeRooms();
-				IncProgress();
-				[[maybe_unused]] uint32_t mid3Seed = GetLCGEngineState();
-				InitMissiles();
-				InitCorpses();
-#ifdef _DEBUG
-				SetDebugLevelSeedInfos(mid1Seed, mid2Seed, mid3Seed, GetLCGEngineState());
-#endif
-				SavePreLighting();
-				IncProgress();
-
-				if (gbIsMultiplayer)
-					DeltaLoadLevel();
-			} else {
-				HoldThemeRooms();
-				InitGolems();
-				InitMonsters();
-				InitMissiles();
-				InitCorpses();
-				IncProgress();
-				LoadLevel();
-				IncProgress();
-			}
-		} else {
-			for (int i = 0; i < MAXDUNX; i++) { // NOLINT(modernize-loop-convert)
-				for (int j = 0; j < MAXDUNY; j++) {
-					dFlags[i][j] |= DungeonFlag::Lit;
-				}
-			}
-
-			InitTowners();
-			InitStash();
-			InitItems();
-			InitMissiles();
-			IncProgress();
-
-			if (!firstflag && lvldir != ENTRY_LOAD && myPlayer._pLvlVisited[currlevel] && !gbIsMultiplayer)
-				LoadLevel();
-			if (gbIsMultiplayer)
-				DeltaLoadLevel();
-
-			IncProgress();
-			for (int x = 0; x < DMAXX; x++)
-				for (int y = 0; y < DMAXY; y++)
-					UpdateAutomapExplorer({ x, y }, MAP_EXP_SELF);
-		}
-		if (UseMultiplayerQuests())
-			ResyncMPQuests();
-		else
-			ResyncQuests();
-	} else {
-		LoadSetMap();
-		IncProgress();
-		GetLevelMTypes();
-		IncProgress();
+tl::expected<void, std::string> LoadGameLevelDungeon(bool firstflag, lvl_entry lvldir, const Player &myPlayer)
+{
+	if (firstflag || lvldir == ENTRY_LOAD || !myPlayer._pLvlVisited[currlevel] || gbIsMultiplayer) {
+		HoldThemeRooms();
+		[[maybe_unused]] uint32_t mid1Seed = GetLCGEngineState();
 		InitGolems();
-		InitMonsters();
-		IncProgress();
-		if (!HeadlessMode) {
-#if !defined(USE_SDL1) && !defined(__vita__)
-			InitVirtualGamepadGFX(renderer);
-#endif
-			InitMissileGFX(gbIsHellfire);
-			IncProgress();
-		}
-		InitCorpses();
+		InitObjects();
+		[[maybe_unused]] uint32_t mid2Seed = GetLCGEngineState();
+
 		IncProgress();
 
-		if (lvldir == ENTRY_WARPLVL)
-			GetPortalLvlPos();
+		RETURN_IF_ERROR(InitMonsters());
+		InitItems();
+		CreateThemeRooms();
+
 		IncProgress();
 
-		for (Player &player : Players) {
-			if (player.plractive && player.isOnActiveLevel()) {
-				InitPlayerGFX(player);
-				if (lvldir != ENTRY_LOAD)
-					InitPlayer(player, firstflag);
-			}
-		}
-		IncProgress();
-		PlayDungMsgs();
-		InitMultiView();
-		IncProgress();
-
-		if (firstflag || lvldir == ENTRY_LOAD || !myPlayer._pSLvlVisited[setlvlnum] || gbIsMultiplayer) {
-			InitItems();
-			SavePreLighting();
-		} else {
-			LoadLevel();
-		}
-		if (gbIsMultiplayer) {
-			DeltaLoadLevel();
-			if (!UseMultiplayerQuests())
-				ResyncQuests();
-		}
-
+		[[maybe_unused]] uint32_t mid3Seed = GetLCGEngineState();
 		InitMissiles();
+		InitCorpses();
+#ifdef _DEBUG
+		SetDebugLevelSeedInfos(mid1Seed, mid2Seed, mid3Seed, GetLCGEngineState());
+#endif
+		SavePreLighting();
+
+		IncProgress();
+
+		if (gbIsMultiplayer)
+			DeltaLoadLevel();
+	} else {
+		HoldThemeRooms();
+		InitGolems();
+		RETURN_IF_ERROR(InitMonsters());
+		InitMissiles();
+		InitCorpses();
+
+		IncProgress();
+
+		RETURN_IF_ERROR(LoadLevel());
+
 		IncProgress();
 	}
+	return {};
+}
 
-	SyncPortals();
-
+void LoadGameLevelSyncPlayerEntry(lvl_entry lvldir)
+{
 	for (Player &player : Players) {
 		if (player.plractive && player.isOnActiveLevel() && (!player._pLvlChanging || &player == MyPlayer)) {
 			if (player._pHitPoints > 0) {
@@ -3090,51 +2987,293 @@ void LoadGameLevel(bool firstflag, lvl_entry lvldir)
 			}
 		}
 	}
+}
 
-	IncProgress();
-	IncProgress();
-
-	if (firstflag) {
-		InitMainPanel();
-	}
-	IncProgress();
-	UpdateMonsterLights();
-	UnstuckChargers();
+void LoadGameLevelLightVision()
+{
 	if (leveltype != DTYPE_TOWN) {
 		memcpy(dLight, dPreLight, sizeof(dLight));                                     // resets the light on entering a level to get rid of incorrect light
 		ChangeLightXY(Players[MyPlayerId].lightId, Players[MyPlayerId].position.tile); // forces player light refresh
 		ProcessLightList();
 		ProcessVisionList();
 	}
+}
 
-	if (leveltype == DTYPE_CRYPT) {
-		if (CornerStone.isAvailable()) {
-			CornerstoneLoad(CornerStone.position);
+void LoadGameLevelReturn()
+{
+	ViewPosition = GetMapReturnPosition();
+	if (Quests[Q_BETRAYER]._qactive == QUEST_DONE)
+		Quests[Q_BETRAYER]._qvar2 = 2;
+}
+
+void LoadGameLevelInitPlayers(bool firstflag, lvl_entry lvldir)
+{
+	for (Player &player : Players) {
+		if (player.plractive && player.isOnActiveLevel()) {
+			InitPlayerGFX(player);
+			if (lvldir != ENTRY_LOAD)
+				InitPlayer(player, firstflag);
 		}
-		if (Quests[Q_NAKRUL]._qactive == QUEST_DONE && currlevel == 24) {
-			SyncNakrulRoom();
+	}
+}
+
+void LoadGameLevelSetVisited()
+{
+	bool visited = false;
+	for (const Player &player : Players) {
+		if (player.plractive)
+			visited = visited || player._pLvlVisited[currlevel];
+	}
+}
+
+tl::expected<void, std::string> LoadGameLevelTown(bool firstflag, lvl_entry lvldir, const Player &myPlayer)
+{
+	for (int i = 0; i < MAXDUNX; i++) { // NOLINT(modernize-loop-convert)
+		for (int j = 0; j < MAXDUNY; j++) {
+			dFlags[i][j] |= DungeonFlag::Lit;
 		}
 	}
 
-#ifndef USE_SDL1
-	ActivateVirtualGamepad();
+	InitTowners();
+	InitStash();
+	InitItems();
+	InitMissiles();
+
+	IncProgress();
+
+	if (!firstflag && lvldir != ENTRY_LOAD && myPlayer._pLvlVisited[currlevel] && !gbIsMultiplayer)
+		RETURN_IF_ERROR(LoadLevel());
+	if (gbIsMultiplayer)
+		DeltaLoadLevel();
+
+	IncProgress();
+
+	for (int x = 0; x < DMAXX; x++)
+		for (int y = 0; y < DMAXY; y++)
+			UpdateAutomapExplorer({ x, y }, MAP_EXP_SELF);
+	return {};
+}
+
+tl::expected<void, std::string> LoadGameLevelSetLevel(bool firstflag, lvl_entry lvldir, const Player &myPlayer)
+{
+	LoadSetMap();
+	IncProgress();
+	RETURN_IF_ERROR(GetLevelMTypes());
+	IncProgress();
+	InitGolems();
+	RETURN_IF_ERROR(InitMonsters());
+	IncProgress();
+	if (!HeadlessMode) {
+#if !defined(USE_SDL1) && !defined(__vita__)
+		InitVirtualGamepadGFX();
+#endif
+		RETURN_IF_ERROR(InitMissileGFX(gbIsHellfire));
+		IncProgress();
+	}
+	InitCorpses();
+	IncProgress();
+
+	if (lvldir == ENTRY_WARPLVL)
+		GetPortalLvlPos();
+	IncProgress();
+
+	for (Player &player : Players) {
+		if (player.plractive && player.isOnActiveLevel()) {
+			InitPlayerGFX(player);
+			if (lvldir != ENTRY_LOAD)
+				InitPlayer(player, firstflag);
+		}
+	}
+	IncProgress();
+	InitMultiView();
+	IncProgress();
+
+	if (firstflag || lvldir == ENTRY_LOAD || !myPlayer._pSLvlVisited[setlvlnum] || gbIsMultiplayer) {
+		InitItems();
+		SavePreLighting();
+	} else {
+		RETURN_IF_ERROR(LoadLevel());
+	}
+	if (gbIsMultiplayer) {
+		DeltaLoadLevel();
+		if (!UseMultiplayerQuests())
+			ResyncQuests();
+	}
+
+	PlayDungMsgs();
+	InitMissiles();
+	IncProgress();
+	return {};
+}
+
+tl::expected<void, std::string> LoadGameLevelStandardLevel(bool firstflag, lvl_entry lvldir, const Player &myPlayer)
+{
+	CreateLevel(lvldir);
+
+	IncProgress();
+
+	SetRndSeedForDungeonLevel();
+
+	if (leveltype != DTYPE_TOWN) {
+		RETURN_IF_ERROR(GetLevelMTypes());
+		InitThemes();
+		if (!HeadlessMode)
+			RETURN_IF_ERROR(LoadAllGFX());
+	} else if (!HeadlessMode) {
+		IncProgress();
+
+#if !defined(USE_SDL1) && !defined(__vita__)
+		InitVirtualGamepadGFX();
 #endif
 
-	if (sgnMusicTrack != neededTrack)
-		music_start(neededTrack);
+		IncProgress();
 
-	if (MinimizePaused) {
-		music_mute();
+		RETURN_IF_ERROR(InitMissileGFX(gbIsHellfire));
+
+		IncProgress();
+		IncProgress();
 	}
 
-	CompleteProgress();
+	IncProgress();
 
+	if (lvldir == ENTRY_RTNLVL) {
+		LoadGameLevelReturn();
+	}
+
+	if (lvldir == ENTRY_WARPLVL)
+		GetPortalLvlPos();
+
+	IncProgress();
+
+	LoadGameLevelInitPlayers(firstflag, lvldir);
+	InitMultiView();
+
+	IncProgress();
+
+	LoadGameLevelSetVisited();
+
+	SetRndSeedForDungeonLevel();
+
+	if (leveltype == DTYPE_TOWN) {
+		LoadGameLevelTown(firstflag, lvldir, myPlayer);
+	} else {
+		LoadGameLevelDungeon(firstflag, lvldir, myPlayer);
+	}
+
+	PlayDungMsgs();
+
+	if (UseMultiplayerQuests())
+		ResyncMPQuests();
+	else
+		ResyncQuests();
+	return {};
+}
+
+void LoadGameLevelCrypt()
+{
+	if (CornerStone.isAvailable()) {
+		CornerstoneLoad(CornerStone.position);
+	}
+	if (Quests[Q_NAKRUL]._qactive == QUEST_DONE && currlevel == 24) {
+		SyncNakrulRoom();
+	}
+}
+
+void LoadGameLevelCalculateCursor()
+{
 	// Recalculate mouse selection of entities after level change/load
 	LastMouseButtonAction = MouseActionType::None;
 	sgbMouseDown = CLICK_NONE;
 	ResetItemlabelHighlighted(); // level changed => item changed
 	pcursmonst = -1;             // ensure pcurstemp is set to a valid value
 	CheckCursMove();
+}
+
+tl::expected<void, std::string> LoadGameLevel(bool firstflag, lvl_entry lvldir)
+{
+	_music_id neededTrack = GetLevelMusic(leveltype);
+
+	ClearFloatingNumbers();
+	LoadGameLevelStopMusic(neededTrack);
+	LoadGameLevelResetCursor();
+	SetRndSeedForDungeonLevel();
+
+	IncProgress();
+
+	RETURN_IF_ERROR(LoadTrns());
+	MakeLightTable();
+	RETURN_IF_ERROR(LoadLevelSOLData());
+
+	IncProgress();
+
+	RETURN_IF_ERROR(LoadLvlGFX());
+	SetDungeonMicros();
+	ClearClxDrawCache();
+
+	IncProgress();
+
+	if (firstflag) {
+		LoadGameLevelFirstFlagEntry();
+	}
+
+	SetRndSeedForDungeonLevel();
+
+	LoadGameLevelStores();
+
+	if (firstflag || lvldir == ENTRY_LOAD) {
+		LoadGameLevelStash();
+	}
+
+	IncProgress();
+
+	InitAutomap();
+
+	if (leveltype != DTYPE_TOWN && lvldir != ENTRY_LOAD) {
+		InitLighting();
+	}
+
+	InitLevelMonsters();
+
+	IncProgress();
+
+	Player &myPlayer = *MyPlayer;
+
+	if (setlevel) {
+		RETURN_IF_ERROR(LoadGameLevelSetLevel(firstflag, lvldir, myPlayer));
+	} else {
+		RETURN_IF_ERROR(LoadGameLevelStandardLevel(firstflag, lvldir, myPlayer));
+	}
+
+	SyncPortals();
+	LoadGameLevelSyncPlayerEntry(lvldir);
+
+	IncProgress();
+	IncProgress();
+
+	if (firstflag) {
+		RETURN_IF_ERROR(InitMainPanel());
+	}
+
+	IncProgress();
+
+	UpdateMonsterLights();
+	UnstuckChargers();
+
+	LoadGameLevelLightVision();
+
+	if (leveltype == DTYPE_CRYPT) {
+		LoadGameLevelCrypt();
+	}
+
+#ifndef USE_SDL1
+	ActivateVirtualGamepad();
+#endif
+	LoadGameLevelStartMusic(neededTrack);
+
+	CompleteProgress();
+
+	LoadGameLevelCalculateCursor();
+	return {};
 }
 
 bool game_loop(bool bStartup)

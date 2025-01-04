@@ -345,7 +345,11 @@ bool StoreAutoPlace(Item &item, bool persistItem)
 		return true;
 	}
 
-	return AutoPlaceItemInInventory(player, item, persistItem, true);
+	if (persistItem) {
+		return AutoPlaceItemInInventory(player, item, true);
+	}
+
+	return CanFitItemInInventory(player, item);
 }
 
 void ScrollVendorStore(Item *itemData, int storeLimit, int idx, int selling = true)
@@ -1704,11 +1708,11 @@ void BoyEnter()
 	StartStore(TalkID::Gossip);
 }
 
-void BoyBuyItem(Item &item)
+void BoyBuyItem(Item &item, int itemPrice)
 {
-	TakePlrsMoney(item._iIvalue);
+	TakePlrsMoney(itemPrice);
 	StoreAutoPlace(item, true);
-	BoyItem.clear();
+	item.clear();
 	OldActiveStore = TalkID::Boy;
 	CalcPlrInv(*MyPlayer, true);
 	OldTextLine = 12;
@@ -1832,7 +1836,7 @@ void ConfirmEnter(Item &item)
 			WitchRechargeItem(item._iIvalue);
 			break;
 		case TalkID::BoyBuy:
-			BoyBuyItem(item);
+			BoyBuyItem(BoyItem, item._iIvalue);
 			break;
 		case TalkID::HealerBuy:
 			HealerBuyItem(item);
